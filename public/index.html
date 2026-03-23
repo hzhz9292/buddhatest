@@ -1,138 +1,182 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
-  <meta name="theme-color" content="#0f1722">
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#0b1020" />
   <title>Buddha Chat</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/assets/icon-192.png" />
+  <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-<div id="app">
-  <section id="deviceGate" class="screen center-screen">
-    <div class="glass-card hero-card">
-      <div class="icon-shell"><img class="logo" src="/assets/icon-192.png" alt=""></div>
-      <h1>Buddha Chat</h1>
-      <p class="sub">Выбери устройство, чтобы правильно установить приложение и включить уведомления.</p>
-      <div class="device-actions">
-        <button class="primary huge" data-device="iphone">iPhone</button>
-        <button class="secondary huge" data-device="android">Android</button>
-      </div>
-    </div>
-  </section>
-
-  <section id="installGuide" class="screen hidden center-screen">
-    <div class="glass-card sheet">
-      <button id="backToGate" class="ghost top-back">← Назад</button>
-      <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
-      <h2 id="guideTitle">Установка</h2>
-      <ol id="guideList"></ol>
-      <button id="requestNotifications" class="primary">Включить уведомления</button>
-      <button id="continueToAuth" class="secondary">Продолжить</button>
-      <div id="pushStatus" class="hint"></div>
-    </div>
-  </section>
-
-  <section id="authScreen" class="screen hidden auth-screen">
-    <div class="glass-card auth-card">
-      <div class="auth-brand">
-        <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
-        <div>
-          <h2>Buddha Chat</h2>
-          <p class="sub">Минималистичный мессенджер с приватным вайбом.</p>
+  <div id="app" class="app-shell">
+    <header class="topbar glass">
+      <div class="topbar__brand">
+        <img class="brand__icon" src="/assets/icon-192.png" alt="Buddha Chat" />
+        <div class="brand__meta">
+          <div class="brand__title">Buddha Chat</div>
+          <div class="brand__subtitle" id="brandSubtitle">secure mobile messenger</div>
         </div>
       </div>
-      <div class="tabs">
-        <button id="tabLogin" class="tab active">Вход</button>
-        <button id="tabRegister" class="tab">Регистрация</button>
-      </div>
-      <form id="loginForm" class="form active">
-        <input name="username" placeholder="Username" required>
-        <input name="password" type="password" placeholder="Пароль" required>
-        <button class="primary" type="submit">Войти</button>
-      </form>
-      <form id="registerForm" class="form">
-        <input name="email" type="email" placeholder="Email (необязательно)">
-        <input name="username" placeholder="Username" required>
-        <input name="password" type="password" placeholder="Пароль" required>
-        <button class="primary" type="submit">Создать аккаунт</button>
-      </form>
-      <div id="authError" class="error"></div>
-    </div>
-  </section>
+      <button id="btnLogout" class="icon-btn" title="Выйти" aria-label="Выйти">
+        <span>⎋</span>
+      </button>
+    </header>
 
-  <section id="mainScreen" class="screen hidden app-shell">
-    <aside id="sidebar" class="sidebar glass-side">
-      <header class="sidebar-header">
-        <div class="brand-row">
-          <div class="icon-shell tiny-shell"><img class="tiny-logo" src="/assets/icon-192.png" alt=""></div>
-          <div>
-            <div class="brand">Buddha Chat</div>
-            <div class="muted">личные переписки</div>
+    <main class="main">
+      <section id="authScreen" class="screen screen--center">
+        <div class="card glass auth-card">
+          <img class="auth-logo" src="/assets/icon-512.png" alt="Buddha Chat" />
+          <h1 class="auth-title">Buddha Chat</h1>
+          <p class="auth-subtitle">Вход и регистрация без лишнего. Только username и пароль.</p>
+
+          <div class="segmented">
+            <button id="tabLogin" class="segmented__item segmented__item--active">Вход</button>
+            <button id="tabRegister" class="segmented__item">Регистрация</button>
           </div>
-        </div>
-      </header>
-      <div class="search-box">
-        <input id="userSearch" placeholder="Поиск по username">
-      </div>
-      <div id="searchResults" class="search-results"></div>
-      <div id="chatList" class="chat-list"></div>
-      <nav class="bottom-nav glass-nav">
-        <button class="nav-btn active" data-nav="chats">Чаты</button>
-        <button class="nav-btn" data-nav="settings">Настройки</button>
-      </nav>
-    </aside>
 
-    <main id="chatPanel" class="chat-panel">
-      <header class="chat-header glass-top">
-        <button id="mobileBack" class="ghost icon-btn">←</button>
-        <div class="chat-head-copy">
-          <div id="chatTitle" class="chat-title">Выбери чат</div>
-          <div class="muted">личная переписка</div>
-        </div>
-        <div class="header-actions">
-          <button id="callBtn" class="ghost">Звонок</button>
-          <button id="testPushBtn" class="ghost small-hide">Тестовый push</button>
-        </div>
-      </header>
+          <form id="authForm" class="form">
+            <label class="field">
+              <span class="field__label">Username</span>
+              <input id="authUsername" type="text" autocomplete="username" placeholder="Введите username" />
+            </label>
 
-      <div id="messages" class="messages chat-wall"></div>
+            <label class="field">
+              <span class="field__label">Пароль</span>
+              <input id="authPassword" type="password" autocomplete="current-password" placeholder="Введите пароль" />
+            </label>
 
-      <form id="composer" class="composer glass-composer">
-        <label class="attach">
-          <input id="fileInput" type="file" hidden>
-          <span>＋</span>
-        </label>
-        <input id="messageInput" placeholder="Сообщение">
-        <button id="sendBtn" type="submit" class="send-btn">Отправить</button>
-      </form>
+            <button id="authSubmit" type="submit" class="primary-btn">Продолжить</button>
+            <p id="authError" class="error-text"></p>
+          </form>
+        </div>
+      </section>
+
+      <section id="messengerScreen" class="screen hidden">
+        <div class="layout">
+          <aside class="panel panel--list" id="leftPanel">
+            <div class="panel__header">
+              <h2>Чаты</h2>
+              <button id="openSearchBtn" class="pill-btn">Новый чат</button>
+            </div>
+
+            <div class="panel__body">
+              <div id="chatList" class="chat-list"></div>
+            </div>
+          </aside>
+
+          <section class="panel panel--chat" id="chatPanel">
+            <div id="emptyState" class="empty-state">
+              <div class="empty-state__icon">💬</div>
+              <div class="empty-state__title">Выбери чат</div>
+              <div class="empty-state__text">Или начни новый диалог через поиск пользователя.</div>
+            </div>
+
+            <div id="chatView" class="chat-view hidden">
+              <div class="chat-header glass">
+                <button id="backToChatsBtn" class="icon-btn mobile-only" aria-label="Назад">←</button>
+                <div class="chat-header__meta">
+                  <div id="chatTitle" class="chat-header__title">Диалог</div>
+                  <div id="chatStatus" class="chat-header__status">online</div>
+                </div>
+                <button id="callBtn" class="icon-btn call-btn" aria-label="Позвонить">📞</button>
+              </div>
+
+              <div id="messages" class="messages"></div>
+
+              <form id="composer" class="composer glass">
+                <input id="messageInput" type="text" placeholder="Сообщение..." autocomplete="off" />
+                <button type="submit" class="send-btn" aria-label="Отправить">➤</button>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
     </main>
 
-    <section id="settingsPanel" class="settings-panel hidden">
-      <div class="glass-card settings-card">
-        <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
-        <h2>Настройки</h2>
-        <div id="profileInfo"></div>
-        <button id="logoutBtn" class="secondary">Выйти</button>
-      </div>
-    </section>
-  </section>
+    <nav id="bottomNav" class="bottom-nav glass hidden">
+      <button id="navChats" class="bottom-nav__item bottom-nav__item--active">
+        <span class="bottom-nav__icon">💬</span>
+        <span class="bottom-nav__label">Чаты</span>
+      </button>
+      <button id="navSearch" class="bottom-nav__item">
+        <span class="bottom-nav__icon">🔎</span>
+        <span class="bottom-nav__label">Поиск</span>
+      </button>
+      <button id="navProfile" class="bottom-nav__item">
+        <span class="bottom-nav__icon">⚙️</span>
+        <span class="bottom-nav__label">Профиль</span>
+      </button>
+    </nav>
 
-  <div id="callOverlay" class="call-overlay hidden">
-    <div class="glass-card call-card">
-      <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
-      <h3 id="callStatus">Звонок</h3>
-      <p id="callPeer"></p>
-      <div class="call-actions">
-        <button id="acceptCallBtn" class="primary hidden">Ответить</button>
-        <button id="endCallBtn" class="danger">Завершить</button>
+    <div id="searchSheet" class="sheet hidden">
+      <div class="sheet__backdrop" id="searchSheetBackdrop"></div>
+      <div class="sheet__panel glass">
+        <div class="sheet__grab"></div>
+        <div class="sheet__header">
+          <h3>Новый чат</h3>
+          <button id="closeSearchBtn" class="icon-btn">✕</button>
+        </div>
+
+        <div class="sheet__body">
+          <label class="field">
+            <span class="field__label">Найти по username</span>
+            <div class="search-row">
+              <input id="searchInput" type="text" placeholder="username" />
+              <button id="searchBtn" class="primary-btn primary-btn--small">Найти</button>
+            </div>
+          </label>
+
+          <div id="searchResult" class="search-result"></div>
+        </div>
       </div>
-      <audio id="remoteAudio" autoplay playsinline></audio>
-      <audio id="localAudio" autoplay muted playsinline></audio>
+    </div>
+
+    <div id="profileSheet" class="sheet hidden">
+      <div class="sheet__backdrop" id="profileSheetBackdrop"></div>
+      <div class="sheet__panel glass">
+        <div class="sheet__grab"></div>
+        <div class="sheet__header">
+          <h3>Профиль</h3>
+          <button id="closeProfileBtn" class="icon-btn">✕</button>
+        </div>
+
+        <div class="sheet__body">
+          <div class="profile-card">
+            <div class="profile-card__row">
+              <span class="profile-card__label">Username</span>
+              <span id="profileUsername" class="profile-card__value">—</span>
+            </div>
+            <div class="profile-card__row">
+              <span class="profile-card__label">Push</span>
+              <button id="enablePushBtn" class="pill-btn">Включить уведомления</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="callOverlay" class="call-overlay hidden">
+      <div class="call-overlay__card glass">
+        <div class="call-overlay__title" id="callOverlayTitle">Вызов</div>
+        <div class="call-overlay__subtitle" id="callOverlaySubtitle">Соединение...</div>
+
+        <div class="call-overlay__actions">
+          <button id="acceptCallBtn" class="circle-btn circle-btn--accept hidden">✓</button>
+          <button id="declineCallBtn" class="circle-btn circle-btn--decline">✕</button>
+        </div>
+      </div>
     </div>
   </div>
-</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/app.js"></script>
