@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0f1722">
+  <title>Buddha Chat</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div id="app">
+  <section id="deviceGate" class="screen center-screen">
+    <div class="glass-card hero-card">
+      <div class="icon-shell"><img class="logo" src="/assets/icon-192.png" alt=""></div>
+      <h1>Buddha Chat</h1>
+      <p class="sub">Выбери устройство, чтобы правильно установить приложение и включить уведомления.</p>
+      <div class="device-actions">
+        <button class="primary huge" data-device="iphone">iPhone</button>
+        <button class="secondary huge" data-device="android">Android</button>
+      </div>
+    </div>
+  </section>
+
+  <section id="installGuide" class="screen hidden center-screen">
+    <div class="glass-card sheet">
+      <button id="backToGate" class="ghost top-back">← Назад</button>
+      <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
+      <h2 id="guideTitle">Установка</h2>
+      <ol id="guideList"></ol>
+      <button id="requestNotifications" class="primary">Включить уведомления</button>
+      <button id="continueToAuth" class="secondary">Продолжить</button>
+      <div id="pushStatus" class="hint"></div>
+    </div>
+  </section>
+
+  <section id="authScreen" class="screen hidden auth-screen">
+    <div class="glass-card auth-card">
+      <div class="auth-brand">
+        <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
+        <div>
+          <h2>Buddha Chat</h2>
+          <p class="sub">Минималистичный мессенджер с приватным вайбом.</p>
+        </div>
+      </div>
+      <div class="tabs">
+        <button id="tabLogin" class="tab active">Вход</button>
+        <button id="tabRegister" class="tab">Регистрация</button>
+      </div>
+      <form id="loginForm" class="form active">
+        <input name="username" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Пароль" required>
+        <button class="primary" type="submit">Войти</button>
+      </form>
+      <form id="registerForm" class="form">
+        <input name="email" type="email" placeholder="Email (необязательно)">
+        <input name="username" placeholder="Username" required>
+        <input name="password" type="password" placeholder="Пароль" required>
+        <button class="primary" type="submit">Создать аккаунт</button>
+      </form>
+      <div id="authError" class="error"></div>
+    </div>
+  </section>
+
+  <section id="mainScreen" class="screen hidden app-shell">
+    <aside id="sidebar" class="sidebar glass-side">
+      <header class="sidebar-header">
+        <div class="brand-row">
+          <div class="icon-shell tiny-shell"><img class="tiny-logo" src="/assets/icon-192.png" alt=""></div>
+          <div>
+            <div class="brand">Buddha Chat</div>
+            <div class="muted">личные переписки</div>
+          </div>
+        </div>
+      </header>
+      <div class="search-box">
+        <input id="userSearch" placeholder="Поиск по username">
+      </div>
+      <div id="searchResults" class="search-results"></div>
+      <div id="chatList" class="chat-list"></div>
+      <nav class="bottom-nav glass-nav">
+        <button class="nav-btn active" data-nav="chats">Чаты</button>
+        <button class="nav-btn" data-nav="settings">Настройки</button>
+      </nav>
+    </aside>
+
+    <main id="chatPanel" class="chat-panel">
+      <header class="chat-header glass-top">
+        <button id="mobileBack" class="ghost icon-btn">←</button>
+        <div class="chat-head-copy">
+          <div id="chatTitle" class="chat-title">Выбери чат</div>
+          <div class="muted">личная переписка</div>
+        </div>
+        <div class="header-actions">
+          <button id="callBtn" class="ghost">Звонок</button>
+          <button id="testPushBtn" class="ghost small-hide">Тестовый push</button>
+        </div>
+      </header>
+
+      <div id="messages" class="messages chat-wall"></div>
+
+      <form id="composer" class="composer glass-composer">
+        <label class="attach">
+          <input id="fileInput" type="file" hidden>
+          <span>＋</span>
+        </label>
+        <input id="messageInput" placeholder="Сообщение">
+        <button id="sendBtn" type="submit" class="send-btn">Отправить</button>
+      </form>
+    </main>
+
+    <section id="settingsPanel" class="settings-panel hidden">
+      <div class="glass-card settings-card">
+        <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
+        <h2>Настройки</h2>
+        <div id="profileInfo"></div>
+        <button id="logoutBtn" class="secondary">Выйти</button>
+      </div>
+    </section>
+  </section>
+
+  <div id="callOverlay" class="call-overlay hidden">
+    <div class="glass-card call-card">
+      <div class="icon-shell small-shell"><img class="logo small" src="/assets/icon-192.png" alt=""></div>
+      <h3 id="callStatus">Звонок</h3>
+      <p id="callPeer"></p>
+      <div class="call-actions">
+        <button id="acceptCallBtn" class="primary hidden">Ответить</button>
+        <button id="endCallBtn" class="danger">Завершить</button>
+      </div>
+      <audio id="remoteAudio" autoplay playsinline></audio>
+      <audio id="localAudio" autoplay muted playsinline></audio>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

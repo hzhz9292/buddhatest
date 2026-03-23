@@ -1,0 +1,11 @@
+{
+  "users": [],
+  "chats": [],
+  "messages": [],
+  "pushSubscriptions": [],
+  "files": [],
+  "meta": {
+    "nextChatId": 1,
+    "nextMessageId": 1
+  }
+}
