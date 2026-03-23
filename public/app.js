@@ -1,366 +1,596 @@
+(() => {
+  const socket = window.io ? window.io() : null;
 
-let state = {
-  me: null,
-  currentChatId: null,
-  currentPeer: null,
-  socket: null,
-  publicVapidKey: null,
-  deviceChoice: localStorage.getItem('deviceChoice') || '',
-  pc: null,
-  pendingOffer: null,
-  sending: false
-};
-
-const el = id => document.getElementById(id);
-const deviceGate = el('deviceGate');
-const installGuide = el('installGuide');
-const authScreen = el('authScreen');
-const mainScreen = el('mainScreen');
-const sidebar = el('sidebar');
-const chatPanel = el('chatPanel');
-const settingsPanel = el('settingsPanel');
-const messagesEl = el('messages');
-const chatListEl = el('chatList');
-const searchResultsEl = el('searchResults');
-const profileInfo = el('profileInfo');
-const userSearch = el('userSearch');
-const pushStatus = el('pushStatus');
-const guideList = el('guideList');
-const guideTitle = el('guideTitle');
-const messageInput = el('messageInput');
-const fileInput = el('fileInput');
-
-const iphoneGuide = [
-  'Нажми кнопку «Поделиться» в Safari.',
-  'Выбери «На экран Домой».',
-  'Открой Buddha Chat с экрана Домой.',
-  'Нажми «Включить уведомления» и разреши их.'
-];
-const androidGuide = [
-  'Открой меню браузера.',
-  'Нажми «Установить приложение» или «Добавить на главный экран».',
-  'Запусти Buddha Chat с главного экрана.',
-  'Нажми «Включить уведомления» и разреши их.'
-];
-
-document.querySelectorAll('[data-device]').forEach(btn => btn.addEventListener('click', () => {
-  state.deviceChoice = btn.dataset.device;
-  localStorage.setItem('deviceChoice', state.deviceChoice);
-  showGuide();
-}));
-
-el('backToGate').onclick = () => showDeviceGate();
-el('continueToAuth').onclick = () => {
-  installGuide.classList.add('hidden');
-  authScreen.classList.remove('hidden');
-};
-el('requestNotifications').onclick = async () => {
-  const ok = await setupPush();
-  pushStatus.textContent = ok ? 'Уведомления включены.' : 'Не удалось включить уведомления.';
-};
-
-function showGuide() {
-  deviceGate.classList.add('hidden');
-  installGuide.classList.remove('hidden');
-  guideTitle.textContent = state.deviceChoice === 'iphone' ? 'iPhone' : 'Android';
-  guideList.innerHTML = (state.deviceChoice === 'iphone' ? iphoneGuide : androidGuide).map(x => `<li>${x}</li>`).join('');
-}
-function showDeviceGate() {
-  deviceGate.classList.remove('hidden');
-  installGuide.classList.add('hidden');
-  authScreen.classList.add('hidden');
-}
-if (state.deviceChoice) showGuide();
-
-el('tabLogin').onclick = () => toggleAuth('login');
-el('tabRegister').onclick = () => toggleAuth('register');
-function toggleAuth(tab) {
-  el('tabLogin').classList.toggle('active', tab === 'login');
-  el('tabRegister').classList.toggle('active', tab === 'register');
-  el('loginForm').classList.toggle('active', tab === 'login');
-  el('registerForm').classList.toggle('active', tab === 'register');
-}
-
-async function api(url, options = {}) {
-  const res = await fetch(url, {
-    credentials: 'include',
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : {'Content-Type': 'application/json'}),
-      ...(options.headers || {})
-    }
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || 'request_failed');
-  return data;
-}
-
-el('registerForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  try {
-    const data = await api('/api/register', { method: 'POST', body: JSON.stringify(Object.fromEntries(fd)) });
-    state.me = data.user;
-    afterAuth();
-  } catch (err) {
-    el('authError').textContent = 'Регистрация не удалась: ' + err.message;
-  }
-});
-el('loginForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  try {
-    const data = await api('/api/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(fd)) });
-    state.me = data.user;
-    afterAuth();
-  } catch (err) {
-    el('authError').textContent = 'Вход не удался: ' + err.message;
-  }
-});
-
-async function afterAuth() {
-  authScreen.classList.add('hidden');
-  mainScreen.classList.remove('hidden');
-  profileInfo.innerHTML = `<p><strong>${state.me.username}</strong></p><p class="muted">${state.me.email || 'Без email'}</p>`;
-  await loadChats();
-  await setupPush();
-  initSocket();
-}
-
-async function loadMe() {
-  try {
-    const { user } = await api('/api/me');
-    if (user) {
-      state.me = user;
-      mainScreen.classList.remove('hidden');
-      deviceGate.classList.add('hidden');
-      installGuide.classList.add('hidden');
-      authScreen.classList.add('hidden');
-      profileInfo.innerHTML = `<p><strong>${state.me.username}</strong></p><p class="muted">${state.me.email || 'Без email'}</p>`;
-      await loadChats();
-      await setupPush();
-      initSocket();
-    } else if (state.deviceChoice) {
-      installGuide.classList.remove('hidden');
-      deviceGate.classList.add('hidden');
-    } else {
-      showDeviceGate();
-    }
-  } catch {
-    showDeviceGate();
-  }
-}
-
-async function loadChats() {
-  const { chats } = await api('/api/chats');
-  chatListEl.innerHTML = chats.map(c => `
-    <div class="chat-card ${state.currentChatId === c.id ? 'active' : ''}" data-chat-id="${c.id}" data-peer-id="${c.otherUser?.id || ''}" data-peer-name="${c.otherUser?.username || ''}">
-      <div><strong>${c.otherUser?.username || 'Чат'}</strong></div>
-      <div class="muted">${c.lastMessage?.text || 'Нет сообщений'}</div>
-    </div>
-  `).join('');
-  chatListEl.querySelectorAll('.chat-card').forEach(card => card.onclick = () => openChat(Number(card.dataset.chatId), {id: card.dataset.peerId, username: card.dataset.peerName}));
-}
-
-userSearch.addEventListener('input', async () => {
-  const q = userSearch.value.trim();
-  if (!q) return searchResultsEl.innerHTML = '';
-  const { users } = await api('/api/users/search?q=' + encodeURIComponent(q));
-  searchResultsEl.innerHTML = users.map(u => `<div class="result-card" data-username="${u.username}" data-user-id="${u.id}">${u.username}</div>`).join('');
-  searchResultsEl.querySelectorAll('.result-card').forEach(card => card.onclick = async () => {
-    const { chatId, otherUser } = await api('/api/chats/open', { method: 'POST', body: JSON.stringify({ username: card.dataset.username }) });
-    await loadChats();
-    openChat(chatId, otherUser);
-    userSearch.value = '';
-    searchResultsEl.innerHTML = '';
-  });
-});
-
-async function openChat(chatId, peer) {
-  state.currentChatId = chatId;
-  state.currentPeer = peer;
-  el('chatTitle').textContent = peer.username || 'Чат';
-  chatPanel.classList.add('open');
-  settingsPanel.classList.remove('open');
-  await loadMessages();
-  if (state.socket) state.socket.emit('chat:join', chatId);
-}
-
-async function loadMessages() {
-  if (!state.currentChatId) return;
-  const { messages } = await api(`/api/chats/${state.currentChatId}/messages`);
-  renderMessages(messages);
-}
-
-function renderMessages(list) {
-  messagesEl.innerHTML = list.map(m => {
-    const mine = m.senderId === state.me.id;
-    let extra = '';
-    if (m.fileUrl) extra = `<a class="file-link" target="_blank" href="${m.fileUrl}">${m.fileName || 'Файл'}</a>`;
-    return `<div class="bubble ${mine ? 'me' : 'them'}" data-id="${m.id}">
-      <div>${escapeHtml(m.text || '')}</div>${extra}
-      <span class="meta">${new Date(m.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} ${mine ? `<button class="ghost deleteBtn" data-id="${m.id}">удалить</button>` : ''}</span>
-    </div>`;
-  }).join('');
-  messagesEl.querySelectorAll('.deleteBtn').forEach(btn => btn.onclick = async () => {
-    await api('/api/messages/' + btn.dataset.id, { method: 'DELETE' });
-  });
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;', "'": '&#39;'}[m]));
-}
-
-el('composer').addEventListener('submit', async e => {
-  e.preventDefault();
-  if (state.sending || !state.currentChatId) return;
-  state.sending = true;
-  const fd = new FormData();
-  fd.append('text', messageInput.value.trim());
-  if (fileInput.files[0]) fd.append('file', fileInput.files[0]);
-  messageInput.value = '';
-  fileInput.value = '';
-  try {
-    await fetch(`/api/chats/${state.currentChatId}/messages`, { method: 'POST', body: fd, credentials: 'include' });
-    await loadMessages();
-    await loadChats();
-  } finally {
-    setTimeout(() => state.sending = false, 300);
-  }
-});
-
-el('logoutBtn').onclick = async () => {
-  await api('/api/logout', { method: 'POST' });
-  location.reload();
-};
-
-document.querySelectorAll('.nav-btn').forEach(btn => btn.onclick = () => {
-  const target = btn.dataset.nav;
-  document.querySelectorAll('.nav-btn').forEach(x => x.classList.toggle('active', x === btn));
-  if (target === 'settings') {
-    settingsPanel.classList.add('open');
-    chatPanel.classList.remove('open');
-  } else {
-    settingsPanel.classList.remove('open');
-  }
-});
-el('mobileBack').onclick = () => chatPanel.classList.remove('open');
-
-async function setupPush() {
-  try {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false;
-    const cfg = await api('/api/config');
-    state.publicVapidKey = cfg.vapidPublicKey;
-    const reg = await navigator.serviceWorker.register('/sw.js');
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') return false;
-    let sub = await reg.pushManager.getSubscription();
-    if (!sub) {
-      sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(state.publicVapidKey)
-      });
-    }
-    await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub }) });
-    return true;
-  } catch (e) {
-    console.warn(e);
-    return false;
-  }
-}
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-  const rawData = atob(base64);
-  return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)));
-}
-
-el('testPushBtn').onclick = async () => {
-  try {
-    const data = await api('/api/push/test', { method: 'POST' });
-    alert(data.ok ? 'Тестовый push отправлен' : 'Тестовый push не отправился');
-  } catch {
-    alert('Тестовый push не отправился');
-  }
-};
-
-function initSocket() {
-  if (state.socket) return;
-  state.socket = io({ withCredentials: true });
-  state.socket.on('message:new', msg => {
-    if (msg.chatId === state.currentChatId) loadMessages();
-    loadChats();
-  });
-  state.socket.on('message:deleted', () => {
-    if (state.currentChatId) loadMessages();
-    loadChats();
-  });
-  state.socket.on('call:offer', async ({ fromUserId, offer }) => {
-    state.pendingOffer = { fromUserId, offer };
-    el('callOverlay').classList.remove('hidden');
-    el('acceptCallBtn').classList.remove('hidden');
-    el('callStatus').textContent = 'Входящий звонок';
-    el('callPeer').textContent = 'Пользователь хочет позвонить';
-  });
-  state.socket.on('call:answer', async ({ answer }) => {
-    if (state.pc) await state.pc.setRemoteDescription(answer);
-    el('callStatus').textContent = 'На связи';
-  });
-  state.socket.on('call:ice', async ({ candidate }) => {
-    if (state.pc && candidate) await state.pc.addIceCandidate(candidate);
-  });
-  state.socket.on('call:end', () => endCall(false));
-}
-
-async function preparePeerConnection(toUserId) {
-  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-  state.pc = pc;
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  el('localAudio').srcObject = stream;
-  stream.getTracks().forEach(track => pc.addTrack(track, stream));
-  pc.ontrack = e => el('remoteAudio').srcObject = e.streams[0];
-  pc.onicecandidate = e => {
-    if (e.candidate) state.socket.emit('call:ice', { toUserId, candidate: e.candidate });
+  const state = {
+    authMode: "login",
+    currentUser: null,
+    chats: [],
+    currentChatId: null,
+    currentPeer: null,
+    messages: {},
+    pushEnabled: false,
+    activeView: "chats",
+    incomingCall: null,
+    outgoingCall: null
   };
-  return pc;
-}
 
-el('callBtn').onclick = async () => {
-  if (!state.currentPeer?.id) return;
-  el('callOverlay').classList.remove('hidden');
-  el('acceptCallBtn').classList.add('hidden');
-  el('callStatus').textContent = 'Исходящий звонок';
-  el('callPeer').textContent = state.currentPeer.username;
-  const pc = await preparePeerConnection(state.currentPeer.id);
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  state.socket.emit('call:offer', { toUserId: state.currentPeer.id, offer, chatId: state.currentChatId });
-};
+  const $ = (id) => document.getElementById(id);
 
-el('acceptCallBtn').onclick = async () => {
-  if (!state.pendingOffer) return;
-  const pc = await preparePeerConnection(state.pendingOffer.fromUserId);
-  await pc.setRemoteDescription(state.pendingOffer.offer);
-  const answer = await pc.createAnswer();
-  await pc.setLocalDescription(answer);
-  state.socket.emit('call:answer', { toUserId: state.pendingOffer.fromUserId, answer });
-  el('acceptCallBtn').classList.add('hidden');
-  el('callStatus').textContent = 'На связи';
-};
+  const els = {
+    app: $("app"),
+    authScreen: $("authScreen"),
+    messengerScreen: $("messengerScreen"),
+    authForm: $("authForm"),
+    authUsername: $("authUsername"),
+    authPassword: $("authPassword"),
+    authSubmit: $("authSubmit"),
+    authError: $("authError"),
+    tabLogin: $("tabLogin"),
+    tabRegister: $("tabRegister"),
+    chatList: $("chatList"),
+    emptyState: $("emptyState"),
+    chatView: $("chatView"),
+    messages: $("messages"),
+    messageInput: $("messageInput"),
+    composer: $("composer"),
+    chatTitle: $("chatTitle"),
+    chatStatus: $("chatStatus"),
+    openSearchBtn: $("openSearchBtn"),
+    closeSearchBtn: $("closeSearchBtn"),
+    searchSheet: $("searchSheet"),
+    searchSheetBackdrop: $("searchSheetBackdrop"),
+    searchInput: $("searchInput"),
+    searchBtn: $("searchBtn"),
+    searchResult: $("searchResult"),
+    navChats: $("navChats"),
+    navSearch: $("navSearch"),
+    navProfile: $("navProfile"),
+    bottomNav: $("bottomNav"),
+    profileSheet: $("profileSheet"),
+    profileSheetBackdrop: $("profileSheetBackdrop"),
+    closeProfileBtn: $("closeProfileBtn"),
+    profileUsername: $("profileUsername"),
+    enablePushBtn: $("enablePushBtn"),
+    btnLogout: $("btnLogout"),
+    backToChatsBtn: $("backToChatsBtn"),
+    callBtn: $("callBtn"),
+    callOverlay: $("callOverlay"),
+    callOverlayTitle: $("callOverlayTitle"),
+    callOverlaySubtitle: $("callOverlaySubtitle"),
+    acceptCallBtn: $("acceptCallBtn"),
+    declineCallBtn: $("declineCallBtn")
+  };
 
-el('endCallBtn').onclick = () => endCall(true);
-function endCall(emit = true) {
-  if (state.pc) {
-    state.pc.getSenders().forEach(s => s.track && s.track.stop());
-    state.pc.close();
-    state.pc = null;
+  function setActiveAuthTab(mode) {
+    state.authMode = mode;
+    els.tabLogin.classList.toggle("segmented__item--active", mode === "login");
+    els.tabRegister.classList.toggle("segmented__item--active", mode === "register");
+    els.authSubmit.textContent = mode === "login" ? "Войти" : "Создать аккаунт";
+    els.authError.textContent = "";
   }
-  el('remoteAudio').srcObject = null;
-  el('localAudio').srcObject = null;
-  el('callOverlay').classList.add('hidden');
-  if (emit && state.currentPeer?.id && state.socket) state.socket.emit('call:end', { toUserId: state.currentPeer.id });
-}
 
-loadMe();
+  function formatTime(dateValue) {
+    try {
+      const d = new Date(dateValue);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement("div");
+    div.textContent = text ?? "";
+    return div.innerHTML;
+  }
+
+  function showAuth() {
+    els.authScreen.classList.remove("hidden");
+    els.messengerScreen.classList.add("hidden");
+    els.bottomNav.classList.add("hidden");
+  }
+
+  function showMessenger() {
+    els.authScreen.classList.add("hidden");
+    els.messengerScreen.classList.remove("hidden");
+    els.bottomNav.classList.remove("hidden");
+    els.profileUsername.textContent = state.currentUser?.username || "—";
+    renderChats();
+    updateMobileView();
+  }
+
+  function updateMobileView() {
+    const isChatOpen = window.innerWidth <= 900 && !!state.currentChatId;
+    els.app.classList.toggle("chat-open", isChatOpen);
+  }
+
+  function setBottomNav(view) {
+    state.activeView = view;
+    els.navChats.classList.toggle("bottom-nav__item--active", view === "chats");
+    els.navSearch.classList.toggle("bottom-nav__item--active", view === "search");
+    els.navProfile.classList.toggle("bottom-nav__item--active", view === "profile");
+  }
+
+  function openSearchSheet() {
+    els.searchSheet.classList.remove("hidden");
+    setBottomNav("search");
+    setTimeout(() => els.searchInput.focus(), 40);
+  }
+
+  function closeSearchSheet() {
+    els.searchSheet.classList.add("hidden");
+    setBottomNav("chats");
+  }
+
+  function openProfileSheet() {
+    els.profileSheet.classList.remove("hidden");
+    setBottomNav("profile");
+  }
+
+  function closeProfileSheet() {
+    els.profileSheet.classList.add("hidden");
+    setBottomNav("chats");
+  }
+
+  function renderChats() {
+    const chats = Array.isArray(state.chats) ? state.chats : [];
+    els.chatList.innerHTML = "";
+
+    if (!chats.length) {
+      els.chatList.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state__icon">🫧</div>
+          <div class="empty-state__title">Пока пусто</div>
+          <div class="empty-state__text">Нажми “Новый чат” и найди пользователя.</div>
+        </div>
+      `;
+      return;
+    }
+
+    chats.forEach((chat) => {
+      const isActive = chat.id === state.currentChatId;
+      const item = document.createElement("button");
+      item.className = `chat-item ${isActive ? "chat-item--active" : ""}`;
+      item.innerHTML = `
+        <div class="chat-item__top">
+          <div class="chat-item__name">${escapeHtml(chat.title || "Диалог")}</div>
+          <div class="chat-item__time">${chat.updatedAt ? formatTime(chat.updatedAt) : ""}</div>
+        </div>
+        <div class="chat-item__last">${escapeHtml(chat.lastMessage || "Нет сообщений")}</div>
+      `;
+      item.addEventListener("click", () => openChat(chat));
+      els.chatList.appendChild(item);
+    });
+  }
+
+  function renderMessages() {
+    const list = state.messages[state.currentChatId] || [];
+    els.messages.innerHTML = "";
+
+    list.forEach((msg) => {
+      const mine = msg.senderUsername === state.currentUser?.username || msg.senderId === state.currentUser?.id;
+      const node = document.createElement("div");
+      node.className = `msg ${mine ? "msg--out" : "msg--in"}`;
+      node.innerHTML = `
+        <div class="msg__text">${escapeHtml(msg.text || "")}</div>
+        <div class="msg__meta">${formatTime(msg.createdAt || Date.now())}</div>
+      `;
+      els.messages.appendChild(node);
+    });
+
+    els.messages.scrollTop = els.messages.scrollHeight;
+  }
+
+  function openChat(chat) {
+    state.currentChatId = chat.id;
+    state.currentPeer = {
+      id: chat.peerId,
+      username: chat.title
+    };
+
+    els.chatTitle.textContent = chat.title || "Диалог";
+    els.chatStatus.textContent = "online";
+    els.emptyState.classList.add("hidden");
+    els.chatView.classList.remove("hidden");
+
+    renderChats();
+    fetchMessages(chat.id);
+    updateMobileView();
+    closeSearchSheet();
+    closeProfileSheet();
+  }
+
+  async function api(url, options = {}) {
+    const res = await fetch(url, {
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      },
+      ...options
+    });
+
+    const text = await res.text();
+    let data = {};
+    try {
+      data = text ? JSON.parse(text) : {};
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!res.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+
+    return data;
+  }
+
+  async function restoreSession() {
+    try {
+      const me = await api("/api/me");
+      if (me?.user) {
+        state.currentUser = me.user;
+        await refreshChats();
+        showMessenger();
+        bindSocketUser();
+      } else {
+        showAuth();
+      }
+    } catch {
+      showAuth();
+    }
+  }
+
+  async function refreshChats() {
+    try {
+      const data = await api("/api/chats");
+      state.chats = Array.isArray(data.chats) ? data.chats : [];
+      renderChats();
+
+      if (state.currentChatId) {
+        const actual = state.chats.find((c) => c.id === state.currentChatId);
+        if (actual) {
+          els.chatTitle.textContent = actual.title || "Диалог";
+        }
+      }
+    } catch (e) {
+      console.error("refreshChats error", e);
+    }
+  }
+
+  async function fetchMessages(chatId) {
+    try {
+      const data = await api(`/api/chats/${chatId}/messages`);
+      state.messages[chatId] = Array.isArray(data.messages) ? data.messages : [];
+      renderMessages();
+    } catch (e) {
+      console.error("fetchMessages error", e);
+    }
+  }
+
+  async function handleAuthSubmit(e) {
+    e.preventDefault();
+    els.authError.textContent = "";
+
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value.trim();
+
+    if (!username || !password) {
+      els.authError.textContent = "Заполни username и пароль.";
+      return;
+    }
+
+    try {
+      const path = state.authMode === "login" ? "/api/login" : "/api/register";
+      const data = await api(path, {
+        method: "POST",
+        body: JSON.stringify({ username, password })
+      });
+
+      state.currentUser = data.user;
+      els.authUsername.value = "";
+      els.authPassword.value = "";
+      await refreshChats();
+      showMessenger();
+      bindSocketUser();
+    } catch (err) {
+      els.authError.textContent = err.message || "Ошибка авторизации";
+    }
+  }
+
+  async function handleSearch() {
+    const username = els.searchInput.value.trim();
+    els.searchResult.innerHTML = "";
+
+    if (!username) return;
+
+    try {
+      const data = await api(`/api/users/search?username=${encodeURIComponent(username)}`);
+      if (!data.user) {
+        els.searchResult.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state__icon">🙃</div>
+            <div class="empty-state__text">Пользователь не найден</div>
+          </div>
+        `;
+        return;
+      }
+
+      const sameUser = data.user.username === state.currentUser?.username;
+      const wrapper = document.createElement("div");
+      wrapper.className = "search-user";
+      wrapper.innerHTML = `
+        <div class="search-user__meta">
+          <div class="search-user__name">${escapeHtml(data.user.username)}</div>
+          <div class="search-user__sub">${sameUser ? "Это ты" : "Нажми, чтобы начать диалог"}</div>
+        </div>
+      `;
+
+      if (!sameUser) {
+        const btn = document.createElement("button");
+        btn.className = "primary-btn primary-btn--small";
+        btn.textContent = "Написать";
+        btn.addEventListener("click", async () => {
+          try {
+            const created = await api("/api/chats/start", {
+              method: "POST",
+              body: JSON.stringify({ username: data.user.username })
+            });
+            await refreshChats();
+
+            const chat = (state.chats || []).find((c) => c.id === created.chat?.id) || created.chat;
+            if (chat) openChat(chat);
+          } catch (e) {
+            console.error(e);
+          }
+        });
+        wrapper.appendChild(btn);
+      }
+
+      els.searchResult.appendChild(wrapper);
+    } catch (err) {
+      els.searchResult.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-state__text">Ошибка поиска</div>
+        </div>
+      `;
+    }
+  }
+
+  async function handleSendMessage(e) {
+    e.preventDefault();
+
+    const text = els.messageInput.value.trim();
+    if (!text || !state.currentChatId) return;
+
+    try {
+      const sent = await api(`/api/chats/${state.currentChatId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ text })
+      });
+
+      els.messageInput.value = "";
+
+      if (!state.messages[state.currentChatId]) state.messages[state.currentChatId] = [];
+      if (sent.message) {
+        state.messages[state.currentChatId].push(sent.message);
+      }
+
+      renderMessages();
+      await refreshChats();
+
+      if (socket) {
+        socket.emit("chat:message", {
+          chatId: state.currentChatId,
+          message: sent.message
+        });
+      }
+    } catch (e) {
+      console.error("send message error", e);
+    }
+  }
+
+  async function enablePush() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return;
+    }
+
+    try {
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const vapidData = await api("/api/push/public-key");
+      const key = urlBase64ToUint8Array(vapidData.publicKey);
+
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key
+        });
+      }
+
+      await api("/api/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify({ subscription: sub })
+      });
+
+      state.pushEnabled = true;
+      els.enablePushBtn.textContent = "Уведомления включены";
+    } catch (e) {
+      console.error("enablePush error", e);
+    }
+  }
+
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/\-/g, "+").replace(/_/g, "/");
+    const rawData = atob(base64);
+    return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  }
+
+  async function logout() {
+    try {
+      await api("/api/logout", { method: "POST" });
+    } catch {}
+    location.reload();
+  }
+
+  function bindSocketUser() {
+    if (!socket || !state.currentUser) return;
+    socket.emit("auth", { userId: state.currentUser.id, username: state.currentUser.username });
+  }
+
+  function setupSocket() {
+    if (!socket) return;
+
+    socket.on("connect", () => {
+      bindSocketUser();
+    });
+
+    socket.on("message:new", async (payload) => {
+      if (!payload?.message || !payload?.chatId) return;
+
+      if (!state.messages[payload.chatId]) state.messages[payload.chatId] = [];
+      const alreadyExists = state.messages[payload.chatId].some((m) => m.id && payload.message.id && m.id === payload.message.id);
+      if (!alreadyExists) {
+        state.messages[payload.chatId].push(payload.message);
+      }
+
+      await refreshChats();
+
+      if (state.currentChatId === payload.chatId) {
+        renderMessages();
+      }
+    });
+
+    socket.on("chat:refresh", async () => {
+      await refreshChats();
+    });
+
+    socket.on("call:incoming", (payload) => {
+      state.incomingCall = payload;
+      els.callOverlay.classList.remove("hidden");
+      els.callOverlayTitle.textContent = `Звонит ${payload?.fromUsername || "пользователь"}`;
+      els.callOverlaySubtitle.textContent = "Входящий вызов";
+      els.acceptCallBtn.classList.remove("hidden");
+    });
+
+    socket.on("call:ended", () => {
+      state.incomingCall = null;
+      state.outgoingCall = null;
+      els.callOverlay.classList.add("hidden");
+      els.acceptCallBtn.classList.add("hidden");
+    });
+
+    socket.on("call:accepted", () => {
+      els.callOverlay.classList.remove("hidden");
+      els.callOverlayTitle.textContent = "Звонок";
+      els.callOverlaySubtitle.textContent = "Соединение установлено";
+      els.acceptCallBtn.classList.add("hidden");
+    });
+  }
+
+  async function startCall() {
+    if (!state.currentPeer?.username) return;
+
+    try {
+      await api("/api/call/start", {
+        method: "POST",
+        body: JSON.stringify({ username: state.currentPeer.username })
+      });
+
+      els.callOverlay.classList.remove("hidden");
+      els.callOverlayTitle.textContent = `Звоним ${state.currentPeer.username}`;
+      els.callOverlaySubtitle.textContent = "Ожидание ответа...";
+      els.acceptCallBtn.classList.add("hidden");
+    } catch (e) {
+      console.error("startCall error", e);
+    }
+  }
+
+  async function acceptCall() {
+    if (!state.incomingCall) return;
+    try {
+      await api("/api/call/accept", {
+        method: "POST",
+        body: JSON.stringify({ callId: state.incomingCall.callId })
+      });
+
+      els.callOverlayTitle.textContent = "Звонок";
+      els.callOverlaySubtitle.textContent = "Соединение установлено";
+      els.acceptCallBtn.classList.add("hidden");
+    } catch (e) {
+      console.error("acceptCall error", e);
+    }
+  }
+
+  async function declineCall() {
+    try {
+      await api("/api/call/decline", {
+        method: "POST",
+        body: JSON.stringify({ callId: state.incomingCall?.callId || state.outgoingCall?.callId || null })
+      });
+    } catch {}
+    els.callOverlay.classList.add("hidden");
+    els.acceptCallBtn.classList.add("hidden");
+    state.incomingCall = null;
+    state.outgoingCall = null;
+  }
+
+  function bindEvents() {
+    els.tabLogin.addEventListener("click", () => setActiveAuthTab("login"));
+    els.tabRegister.addEventListener("click", () => setActiveAuthTab("register"));
+    els.authForm.addEventListener("submit", handleAuthSubmit);
+
+    els.openSearchBtn.addEventListener("click", openSearchSheet);
+    els.closeSearchBtn.addEventListener("click", closeSearchSheet);
+    els.searchSheetBackdrop.addEventListener("click", closeSearchSheet);
+    els.searchBtn.addEventListener("click", handleSearch);
+
+    els.navChats.addEventListener("click", () => {
+      closeSearchSheet();
+      closeProfileSheet();
+      setBottomNav("chats");
+    });
+
+    els.navSearch.addEventListener("click", openSearchSheet);
+    els.navProfile.addEventListener("click", openProfileSheet);
+
+    els.closeProfileBtn.addEventListener("click", closeProfileSheet);
+    els.profileSheetBackdrop.addEventListener("click", closeProfileSheet);
+    els.enablePushBtn.addEventListener("click", enablePush);
+
+    els.composer.addEventListener("submit", handleSendMessage);
+    els.btnLogout.addEventListener("click", logout);
+    els.backToChatsBtn.addEventListener("click", () => {
+      state.currentChatId = null;
+      els.chatView.classList.add("hidden");
+      els.emptyState.classList.remove("hidden");
+      updateMobileView();
+      renderChats();
+    });
+
+    els.callBtn.addEventListener("click", startCall);
+    els.acceptCallBtn.addEventListener("click", acceptCall);
+    els.declineCallBtn.addEventListener("click", declineCall);
+
+    window.addEventListener("resize", updateMobileView);
+  }
+
+  async function init() {
+    setActiveAuthTab("login");
+    bindEvents();
+    setupSocket();
+    await restoreSession();
+
+    setInterval(async () => {
+      if (state.currentUser) {
+        await refreshChats();
+        if (state.currentChatId) {
+          await fetchMessages(state.currentChatId);
+        }
+      }
+    }, 4000);
+  }
+
+  init();
+})();
